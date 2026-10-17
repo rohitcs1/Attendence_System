@@ -1,0 +1,67 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Frontend and backend build output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Logs and runtime files
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test and tool caches
+.vite/
+.vitest/
+.cache/
+.eslintcache
+.parcel-cache/
+
+# IDE and operating-system files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.suo
+*.user
+*.userossc
+*.swp
+Thumbs.db
+Desktop.ini
+
+# Supabase local development
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# Firmware build and provisioning artifacts
+firmware/**/build/
+firmware/**/build-*/
+firmware/**/.pio/
+firmware/**/.pioenvs/
+firmware/**/.vscode/
+firmware/**/firmware.bin
+firmware/**/firmware.elf
+firmware/**/partitions.bin
+firmware/**/sdkconfig
+firmware/**/credentials.h
+firmware/**/secrets.h
+
+# Generated reports and local exports
+*.csv
+*.xlsx
+exports/
+tmp/
+temp/
