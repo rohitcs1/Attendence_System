@@ -6,7 +6,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 export interface Classroom {
-  id: string; room_number: string; building_name: string; floor: number; is_green: boolean;
+  id: string; room_number: string; building_name: string; floor: number; capacity?: number; is_active?: boolean; is_green: boolean;
   teacher_name?: string; subject_name?: string; actual_check_in?: string; scheduled_start?: string;
   scheduled_end?: string; last_seen_at?: string; device_online: boolean;
 }

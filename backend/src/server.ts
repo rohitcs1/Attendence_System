@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomBytes, randomUUID } from 'node:crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -182,7 +183,72 @@ app.get('/api/v1/classrooms', requireAdmin, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-const scanSchema = z.object({ eventId: z.string().uuid(), idempotencyKey: z.string().min(8).max(128), cardUid: z.string().regex(/^[A-Fa-f0-9: -]{4,64}$/), occurredAt: z.string().datetime().optional() });
+const classroomSchema = z.object({
+  roomNumber: z.string().trim().min(1).max(32),
+  buildingName: z.string().trim().min(1).max(120),
+  buildingCode: z.string().trim().min(1).max(32).regex(/^[A-Za-z0-9_-]+$/),
+  floor: z.number().int().min(0).max(200),
+  capacity: z.number().int().positive().max(5000).optional()
+});
+
+app.post('/api/v1/classrooms', requireAdmin, async (req, res, next) => {
+  try {
+    const input = classroomSchema.parse(req.body);
+    const { data, error } = await supabaseAdmin.rpc('create_classroom', {
+      p_room_number: input.roomNumber,
+      p_building_name: input.buildingName,
+      p_building_code: input.buildingCode,
+      p_floor: input.floor,
+      p_capacity: input.capacity ?? null,
+      p_created_by: req.auth!.userId
+    });
+
+    app.get('/api/v1/devices', requireAdmin, async (_req, res, next) => {
+      try {
+        const { data, error } = await supabaseAdmin.from('devices')
+          .select('id,device_id,classroom_id,firmware_version,last_seen_at,revoked_at,classrooms(room_number,buildings(name))')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ data: data ?? [] });
+      } catch (error) { next(error); }
+    });
+
+    app.post('/api/v1/devices', requireAdmin, async (req, res, next) => {
+      try {
+        const input = z.object({
+          deviceId: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
+          classroomId: z.string().uuid()
+        }).parse(req.body);
+        const credential = randomBytes(24).toString('hex');
+        const { data, error } = await supabaseAdmin.from('devices').insert({
+          device_id: input.deviceId,
+          classroom_id: input.classroomId,
+          credential_hash: credential
+        }).select('id,device_id,classroom_id').single();
+        if (error) {
+          if (error.code === '23505') return res.status(409).json({ error: { code: 'DEVICE_EXISTS', message: 'Device ID or classroom already has an assignment.', requestId: req.requestId } });
+          throw error;
+        }
+        res.status(201).json({ ...data, credential });
+      } catch (error) { next(error); }
+    });
+    if (error) {
+      if (error.message.includes('CLASSROOM_EXISTS')) return res.status(409).json({ error: { code: 'CLASSROOM_EXISTS', message: 'That room already exists in this building.', requestId: req.requestId } });
+      throw error;
+    }
+    res.status(201).json(data);
+  } catch (error) { next(error); }
+});
+
+const scanSchema = z.object({
+  eventId: z.string().uuid(),
+  idempotencyKey: z.string().min(8).max(128),
+  cardUid: z.string().regex(/^[A-Fa-f0-9: -]{4,64}$/),
+  occurredAt: z.preprocess(
+    (value) => value === null || value === '' ? undefined : value,
+    z.string().datetime().optional()
+  )
+});
 app.post('/api/v1/device/scans', requireDevice, async (req, res, next) => {
   try {
     const input = scanSchema.parse(req.body);
@@ -194,9 +260,21 @@ app.post('/api/v1/device/scans', requireDevice, async (req, res, next) => {
 app.post('/api/v1/device/heartbeat', requireDevice, async (req, res, next) => {
   try {
     const body = z.object({ firmwareVersion: z.string().max(64), ipAddress: z.string().max(64).optional(), signalStrength: z.number().int().optional() }).parse(req.body);
-    const { error } = await supabaseAdmin.from('device_heartbeats').insert({ device_id: req.device!.id, ...body });
+    const now = new Date().toISOString();
+    const { error: updateError } = await supabaseAdmin.from('devices').update({
+      last_seen_at: now,
+      firmware_version: body.firmwareVersion
+    }).eq('id', req.device!.id).eq('revoked_at', null);
+    if (updateError) throw updateError;
+    const { error } = await supabaseAdmin.from('device_heartbeats').insert({
+      device_id: req.device!.id,
+      firmware_version: body.firmwareVersion,
+      ip_address: body.ipAddress ?? null,
+      signal_strength: body.signalStrength ?? null,
+      received_at: now
+    });
     if (error) throw error;
-    res.json({ accepted: true, receivedAt: new Date().toISOString() });
+    res.json({ accepted: true, receivedAt: now });
   } catch (error) { next(error); }
 });
 

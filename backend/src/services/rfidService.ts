@@ -8,7 +8,7 @@ export async function processRfidScan(input: DeviceRequest, device: { id: string
     p_event_id: input.eventId,
     p_idempotency_key: input.idempotencyKey,
     p_card_uid: input.cardUid,
-    p_occurred_at: input.occurredAt ?? new Date().toISOString()
+    p_occurred_at: input.occurredAt || new Date().toISOString()
   });
   if (error) throw error;
   return data;

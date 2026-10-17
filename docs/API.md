@@ -15,6 +15,13 @@ classroom and ignores any classroom identity supplied by the device.
 - `POST /device/scans` - authenticated, idempotent RFID transition
 - `POST /device/heartbeat` - authenticated health update
 
+The device sends a heartbeat every 60 seconds. The backend updates
+`devices.last_seen_at` and stores a history row in `device_heartbeats`.
+The dashboard considers a device online when its last heartbeat is within
+three minutes; after that it is shown offline. Register the device first with
+its exact `device_id`, classroom assignment, and credential, then flash those
+same values into the firmware.
+
 The scan RPC records invalid, duplicate, conflicting, and successful events.
 A different teacher cannot close an active session. Offline devices do not
 close sessions or create absence decisions.

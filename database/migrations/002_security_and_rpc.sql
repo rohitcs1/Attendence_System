@@ -67,7 +67,9 @@ begin
   if not exists(select 1 from devices where id = p_device_id and classroom_id = p_classroom_id and revoked_at is null) then
     raise exception using errcode = '28000', message = 'DEVICE_CLASSROOM_MISMATCH';
   end if;
-  select * into card_row from teacher_rfid_cards where upper(uid) = upper(p_card_uid) and revoked_at is null;
+  select * into card_row from teacher_rfid_cards
+    where upper(coalesce(rfid_uid, uid)) = upper(p_card_uid)
+      and is_active = true and revoked_at is null;
   if card_row.id is null then
     insert into rfid_scan_events(id,idempotency_key,device_id,classroom_id,card_uid,result_code,occurred_at) values(p_event_id,p_idempotency_key,p_device_id,p_classroom_id,p_card_uid,'INVALID_CARD',p_occurred_at);
     return jsonb_build_object('accepted',false,'resultCode','INVALID_CARD');
