@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { allowedOrigins, config } from './config.js';
 import { handleError, requestContext, requireAdmin, requireDevice, requireRoles } from './middleware.js';
 import { processRfidScan } from './services/rfidService.js';
-import { supabaseAdmin } from './supabase.js';
+import { supabaseAdmin, supabaseAuth } from './supabase.js';
 
 const app = express();
 app.use(helmet());
@@ -16,6 +16,31 @@ app.use(requestContext);
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true }));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+const authSchema = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(256) });
+app.post('/api/v1/auth/login', async (req, res, next) => {
+  try {
+    const input = authSchema.parse(req.body);
+    const { data, error } = await supabaseAuth.auth.signInWithPassword(input);
+    if (error || !data.session || !data.user) {
+      return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.', requestId: req.requestId } });
+    }
+    const { data: profile, error: profileError } = await supabaseAdmin.from('profiles').select('id,full_name,role,department_id').eq('id', data.user.id).single();
+    if (profileError || !profile || !['admin', 'super_admin'].includes(profile.role)) {
+      return res.status(403).json({ error: { code: 'ADMIN_REQUIRED', message: 'This account is not authorized for the administration console.', requestId: req.requestId } });
+    }
+    res.json({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token, expiresAt: data.session.expires_at, user: profile });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/v1/auth/forgot-password', async (req, res, next) => {
+  try {
+    const input = z.object({ email: z.string().email().max(254) }).parse(req.body);
+    const { error } = await supabaseAuth.auth.resetPasswordForEmail(input.email, { redirectTo: `${config.FRONTEND_URL}/login` });
+    if (error) throw error;
+    res.json({ accepted: true, message: 'If the account exists, a password reset email has been sent.' });
+  } catch (error) { next(error); }
+});
 
 app.get('/api/v1/auth/me', requireAdmin, async (req, res, next) => {
   try {
