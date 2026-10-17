@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Activity, Bell, BookOpen, CheckCircle2, CircleAlert, DoorOpen, LayoutDashboard, LogOut, Menu, Plus, Search, Settings, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { api, type Classroom, type Summary } from './api';
-import { supabase } from './supabase';
 
 const emptySummary: Summary = { total_classrooms: 0, green_classrooms: 0, red_classrooms: 0, scheduled_lectures: 0, completed_lectures: 0, missed_lectures: 0, teachers_checked_in: 0, devices_online: 0, devices_offline: 0 };
 type Teacher = { id: string; full_name: string; employee_id: string; email: string; phone?: string; designation?: string; is_active: boolean; departments?: { name: string } | null; teacher_rfid_cards?: Array<{ id: string; rfid_uid: string; is_active: boolean }> };
@@ -60,8 +59,22 @@ function RfidManagement() {
 
 function Login() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [visible, setVisible] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); setError(''); setBusy(true); if (!supabase) { setError('Supabase is not configured.'); setBusy(false); return; } const result = await supabase.auth.signInWithPassword({ email, password }); if (result.error) setError(result.error.message); else window.location.assign('/'); setBusy(false); }
-  return <div className="login-page"><form className="login-card" onSubmit={submit}><div className="brand-mark">SC</div><p className="eyebrow">COLLEGE OPERATIONS</p><h1>Administrator sign in</h1><p className="muted">Only authorized SmartClass administrators may continue.</p><label>Email<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)}/></label><label>Password<div className="password-field"><input required type={visible ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}/><button type="button" onClick={() => setVisible(!visible)}>{visible ? 'Hide' : 'Show'}</button></div></label>{error && <p className="form-error">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button><button className="link-button" type="button" onClick={async () => { if (supabase && email) await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/login` }); }}>Forgot password?</button></form></div>;
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setError(''); setBusy(true);
+    try {
+      const result = await api.post<{ accessToken: string }>('/auth/login', { email, password });
+      localStorage.setItem('smartclass_access_token', result.data.accessToken);
+      window.location.assign('/');
+    } catch (reason: any) {
+      setError(reason.response?.data?.error?.message ?? 'Unable to sign in. Check the backend and try again.');
+    } finally { setBusy(false); }
+  }
+  async function forgotPassword() {
+    if (!email) { setError('Enter your email address first.'); return; }
+    try { await api.post('/auth/forgot-password', { email }); setError('If the account exists, a password reset email has been sent.'); }
+    catch { setError('Unable to request a password reset right now.'); }
+  }
+  return <div className="login-page"><form className="login-card" onSubmit={submit}><div className="brand-mark">SC</div><p className="eyebrow">COLLEGE OPERATIONS</p><h1>Administrator sign in</h1><p className="muted">Only authorized SmartClass administrators may continue.</p><label>Email<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)}/></label><label>Password<div className="password-field"><input required type={visible ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}/><button type="button" onClick={() => setVisible(!visible)}>{visible ? 'Hide' : 'Show'}</button></div></label>{error && <p className="form-error">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button><button className="link-button" type="button" onClick={forgotPassword}>Forgot password?</button></form></div>;
 }
 
 function AdminGate({ children }: { children: ReactNode }) {
@@ -69,12 +82,7 @@ function AdminGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!supabase) {
-        navigate('/login', { replace: true });
-        return;
-      }
-      const session = (await supabase.auth.getSession()).data.session;
-      if (!session) {
+      if (!localStorage.getItem('smartclass_access_token')) {
         navigate('/login', { replace: true });
         return;
       }
@@ -83,7 +91,7 @@ function AdminGate({ children }: { children: ReactNode }) {
         if (active) setState('allowed');
       } catch (reason: any) {
         if (reason.response?.status === 401) {
-          await supabase.auth.signOut();
+          localStorage.removeItem('smartclass_access_token');
           navigate('/login', { replace: true });
           return;
         }
@@ -93,7 +101,7 @@ function AdminGate({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [navigate]);
   if (state === 'loading') return <div className="empty">Checking administrator access...</div>;
-  if (state === 'denied') return <div className="login-page"><div className="login-card"><h1>Unauthorized</h1><p className="muted">This account is not authorized to access the SmartClass administration console.</p><button className="primary" onClick={() => supabase?.auth.signOut().then(() => navigate('/login'))}>Return to login</button></div></div>;
+  if (state === 'denied') return <div className="login-page"><div className="login-card"><h1>Unauthorized</h1><p className="muted">This account is not authorized to access the SmartClass administration console.</p><button className="primary" onClick={() => { localStorage.removeItem('smartclass_access_token'); navigate('/login'); }}>Return to login</button></div></div>;
   return <>{children}</>;
 }
 
@@ -103,5 +111,5 @@ export default function App() {
   const location = useLocation(); const [open, setOpen] = useState(true);
   if (location.pathname === '/login') return <Login/>;
   const nav = [{ to: '/', label: 'Dashboard', icon: LayoutDashboard }, { to: '/classrooms', label: 'Classrooms', icon: DoorOpen }, { to: '/teachers', label: 'Teachers', icon: Users }, { to: '/rfid', label: 'RFID cards', icon: Wifi }, { to: '/timetable', label: 'Timetable', icon: BookOpen }, { to: '/devices', label: 'Devices', icon: Wifi }, { to: '/analytics', label: 'Analytics & reports', icon: Activity }, { to: '/notifications', label: 'Notifications', icon: Bell }, { to: '/settings', label: 'Settings', icon: Settings }];
-  return <AdminGate><div className="app"><aside className={open ? 'sidebar' : 'sidebar collapsed'}><div className="brand"><div className="brand-mark">SC</div>{open && <div><b>SmartClass</b><small>COLLEGE OPERATIONS</small></div>}</div><nav>{nav.map(({ to, label, icon: Icon }) => <Link key={to} className={location.pathname === to ? 'active' : ''} to={to}><Icon size={18}/>{open && label}</Link>)}</nav><div className="sidebar-bottom">{open && <div className="user"><div className="avatar">AD</div><div><b>Administrator</b><small>Operations</small></div></div>}<button className="logout" onClick={() => supabase?.auth.signOut().then(() => window.location.assign('/login'))}><LogOut size={17}/>{open && 'Sign out'}</button></div></aside><div className="main"><header><button className="menu" onClick={() => setOpen(!open)}><Menu size={20}/></button><div className="header-title">Main Academic Block <span>•</span> Live</div><div className="header-actions"><Bell size={19}/><div className="avatar">AD</div></div></header><Routes><Route path="/" element={<Dashboard/>}/><Route path="/teachers" element={<TeacherManagement/>}/><Route path="/rfid" element={<RfidManagement/>}/><Route path="/classrooms" element={<Placeholder title="Classrooms" description="Browse classroom status, details, historical lectures, and device telemetry."/>}/><Route path="/classrooms/:id" element={<Placeholder title="Classroom details" description="Today's timetable, sessions, RFID events, utilization, and device information."/>}/><Route path="/timetable" element={<Placeholder title="Timetable management" description="Manage recurring schedules, exceptions, conflicts, and lecture sessions."/>}/><Route path="/devices" element={<Placeholder title="Device monitoring" description="Register devices, rotate credentials, and monitor heartbeats."/>}/><Route path="/analytics" element={<Placeholder title="Analytics & reports" description="Review utilization, attendance events, late arrivals, and export authorized reports."/>}/><Route path="/notifications" element={<Placeholder title="Notifications" description="Review operational alerts without treating offline devices as teacher absence."/>}/><Route path="/settings" element={<Placeholder title="Settings" description="Configure account, roles, security, and system preferences."/>}/><Route path="*" element={<Placeholder title="Not found" description="The requested page does not exist."/>}/></Routes></div></div></AdminGate>;
+  return <AdminGate><div className="app"><aside className={open ? 'sidebar' : 'sidebar collapsed'}><div className="brand"><div className="brand-mark">SC</div>{open && <div><b>SmartClass</b><small>COLLEGE OPERATIONS</small></div>}</div><nav>{nav.map(({ to, label, icon: Icon }) => <Link key={to} className={location.pathname === to ? 'active' : ''} to={to}><Icon size={18}/>{open && label}</Link>)}</nav><div className="sidebar-bottom">{open && <div className="user"><div className="avatar">AD</div><div><b>Administrator</b><small>Operations</small></div></div>}<button className="logout" onClick={() => { localStorage.removeItem('smartclass_access_token'); window.location.assign('/login'); }}><LogOut size={17}/>{open && 'Sign out'}</button></div></aside><div className="main"><header><button className="menu" onClick={() => setOpen(!open)}><Menu size={20}/></button><div className="header-title">Main Academic Block <span>•</span> Live</div><div className="header-actions"><Bell size={19}/><div className="avatar">AD</div></div></header><Routes><Route path="/" element={<Dashboard/>}/><Route path="/teachers" element={<TeacherManagement/>}/><Route path="/rfid" element={<RfidManagement/>}/><Route path="/classrooms" element={<Placeholder title="Classrooms" description="Browse classroom status, details, historical lectures, and device telemetry."/>}/><Route path="/classrooms/:id" element={<Placeholder title="Classroom details" description="Today's timetable, sessions, RFID events, utilization, and device information."/>}/><Route path="/timetable" element={<Placeholder title="Timetable management" description="Manage recurring schedules, exceptions, conflicts, and lecture sessions."/>}/><Route path="/devices" element={<Placeholder title="Device monitoring" description="Register devices, rotate credentials, and monitor heartbeats."/>}/><Route path="/analytics" element={<Placeholder title="Analytics & reports" description="Review utilization, attendance events, late arrivals, and export authorized reports."/>}/><Route path="/notifications" element={<Placeholder title="Notifications" description="Review operational alerts without treating offline devices as teacher absence."/>}/><Route path="/settings" element={<Placeholder title="Settings" description="Configure account, roles, security, and system preferences."/>}/><Route path="*" element={<Placeholder title="Not found" description="The requested page does not exist."/>}/></Routes></div></div></AdminGate>;
 }

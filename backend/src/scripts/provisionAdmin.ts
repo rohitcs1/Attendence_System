@@ -12,6 +12,10 @@ let userId = data.user?.id;
 if (!userId) {
   const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   userId = users.data.users.find((user) => user.email?.toLowerCase() === process.env.ADMIN_EMAIL!.toLowerCase())?.id;
+  if (userId) {
+    const { error: updateError } = await admin.auth.admin.updateUserById(userId, { password: process.env.ADMIN_PASSWORD!, email_confirm: true });
+    if (updateError) throw updateError;
+  }
 }
 if (!userId) throw new Error('Unable to find the provisioned administrator user.');
 const { error: profileError } = await admin.from('profiles').upsert({ id: userId, full_name: process.env.ADMIN_NAME, role: 'admin' }, { onConflict: 'id' });

@@ -20,9 +20,9 @@ TypeScript Express API, Supabase PostgreSQL, and ESP8266 classroom devices.
 2. Apply `database/migrations/001_initial_schema.sql`, then
    `database/migrations/002_security_and_rpc.sql` in Supabase SQL Editor.
 3. Copy `backend/.env.example` to `backend/.env` and set the Supabase URL,
-   service-role key, JWT secret, and allowed origins.
-4. Copy `frontend/.env.example` to `frontend/.env` and set the public
-   Supabase URL/key and API URL.
+   anon key, service-role key, JWT secret, frontend URL, and allowed origins.
+4. Copy `frontend/.env.example` to `frontend/.env` and set only the backend
+   API URL. The frontend never receives Supabase credentials.
 5. Run `npm install` in both `backend` and `frontend`.
 6. Start the API with `npm run dev` in `backend`, and the UI with `npm run dev`
    in `frontend`.
