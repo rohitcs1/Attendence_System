@@ -18,7 +18,7 @@ classroom and ignores any classroom identity supplied by the device.
 The device sends a heartbeat every 60 seconds. The backend updates
 `devices.last_seen_at` and stores a history row in `device_heartbeats`.
 The dashboard considers a device online when its last heartbeat is within
-three minutes; after that it is shown offline. Register the device first with
+90 seconds; after that it is shown offline. Register the device first with
 its exact `device_id`, classroom assignment, and credential, then flash those
 same values into the firmware.
 

@@ -148,6 +148,10 @@ bool postJson(const String& path, const String& body, String& response) {
 
   int code = http.POST(body);
   response = http.getString();
+  Serial.print("HTTP ");
+  Serial.print(code);
+  Serial.print(" ");
+  Serial.println(response);
   http.end();
 
   return code >= 200 && code < 300;

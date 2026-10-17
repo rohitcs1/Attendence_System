@@ -19,7 +19,8 @@ TypeScript Express API, Supabase PostgreSQL, and ESP8266 classroom devices.
 1. Install Node.js 20+, npm, Arduino IDE 2.x, and a Supabase project.
 2. Apply `database/migrations/001_initial_schema.sql`, then
    `database/migrations/002_security_and_rpc.sql`, `003_admin_teacher_rfid.sql`,
-   `004_classroom_management.sql`, and `005_rfid_timestamp_safety.sql`
+   `004_classroom_management.sql`, `005_rfid_timestamp_safety.sql`, and
+   `006_rfid_timestamp_text_safety.sql`
    in Supabase SQL Editor.
 3. Copy `backend/.env.example` to `backend/.env` and set the Supabase URL,
    anon key, service-role key, JWT secret, frontend URL, and allowed origins.

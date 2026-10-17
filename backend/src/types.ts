@@ -9,7 +9,6 @@ export interface DeviceRequest {
   eventId: string;
   idempotencyKey: string;
   cardUid: string;
-  occurredAt?: string;
 }
 
 export interface ApiErrorShape {

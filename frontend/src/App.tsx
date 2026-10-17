@@ -20,7 +20,27 @@ function Dashboard() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  useEffect(() => { Promise.all([api.get<Summary>('/dashboard/summary'), api.get<{ data: Classroom[] }>('/classrooms?pageSize=100')]).then(([s, c]) => { setSummary(s.data); setClassrooms(c.data.data); }).catch(console.error).finally(() => setLoading(false)); }, []);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      Promise.all([api.get<Summary>('/dashboard/summary'), api.get<{ data: Classroom[] }>('/classrooms?pageSize=100')])
+        .then(([s, c]) => {
+          if (!active) return;
+          setSummary(s.data);
+          setClassrooms(c.data.data);
+        })
+        .catch(console.error)
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
   const filtered = classrooms.filter((room) => `${room.room_number} ${room.building_name} ${room.teacher_name ?? ''}`.toLowerCase().includes(query.toLowerCase()));
   return <main className="content"><div className="page-heading"><div><p className="eyebrow">LIVE OPERATIONS</p><h1>Classroom monitoring</h1><p className="muted">A live view of sessions, schedules, and device health.</p><div className="quick-actions"><Link className="quick-action primary" to="/classrooms"><Plus size={15}/> Add classroom</Link><Link className="quick-action" to="/teachers"><Users size={15}/> Add teacher</Link><Link className="quick-action" to="/rfid"><Wifi size={15}/> Issue RFID card</Link></div></div><div className="last-update"><Activity size={15}/> Updates are server-authoritative</div></div><div className="stats"><Stat label="Total classrooms" value={summary.total_classrooms} icon={DoorOpen}/><Stat label="Green / active" value={summary.green_classrooms} icon={CheckCircle2} tone="green"/><Stat label="Red / no session" value={summary.red_classrooms} icon={CircleAlert} tone="red"/><Stat label="Teachers checked in" value={summary.teachers_checked_in} icon={Users}/><Stat label="Devices online" value={summary.devices_online} icon={Wifi} tone="green"/><Stat label="Devices offline" value={summary.devices_offline} icon={WifiOff} tone="red"/></div><section className="panel"><div className="section-head"><div><h2>All classrooms</h2><p className="muted">Status color represents session validity only.</p></div><label className="search"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search room, building, teacher"/></label></div>{loading ? <div className="empty">Loading classroom telemetry...</div> : filtered.length ? <div className="class-grid">{filtered.map((room) => <ClassroomCard key={room.id} classroom={room}/>)}</div> : <div className="empty">No classrooms match this search.</div>}</section></main>;
 }
@@ -72,7 +92,18 @@ function DeviceManagement() {
     ]);
     setDevices(deviceResult.data.data); setClassrooms(classroomResult.data.data);
   }
-  useEffect(() => { load().catch(() => setError('Unable to load devices.')); }, []);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => load().catch(() => {
+      if (active) setError('Unable to load devices.');
+    });
+    refresh();
+    const timer = window.setInterval(refresh, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
   async function save(event: FormEvent) {
     event.preventDefault(); setError('');
     try {
@@ -80,7 +111,7 @@ function DeviceManagement() {
       setCredential(result.data.credential); setForm({ deviceId: '', classroomId: '' }); await load();
     } catch (reason: any) { setError(reason.response?.data?.error?.message ?? 'Unable to register device.'); }
   }
-  return <main className="content"><div className="page-heading"><div><p className="eyebrow">HARDWARE</p><h1>ESP8266 Device Management</h1><p className="muted">Register each controller, assign its classroom, and monitor heartbeat health.</p></div><button className="primary compact" onClick={() => { setOpen(true); setCredential(''); }}><Plus size={16}/> Register Device</button></div>{error && <div className="notice error">{error}</div>}{credential && <div className="notice success"><b>Save this credential now:</b> {credential}<br/><small>It is shown only after registration. Flash it into the device firmware.</small></div>}<section className="panel"><div className="section-head"><div><h2>Registered devices</h2><p className="muted">Online means a heartbeat was received within the last 3 minutes.</p></div></div><div className="table-wrap"><table><thead><tr><th>Device ID</th><th>Classroom</th><th>Firmware</th><th>Last heartbeat</th><th>Status</th></tr></thead><tbody>{devices.map((device) => { const online = !!device.last_seen_at && Date.now() - new Date(device.last_seen_at).getTime() < 180000 && !device.revoked_at; return <tr key={device.id}><td><b>{device.device_id}</b></td><td>{device.classrooms?.buildings?.name ?? '—'} / {device.classrooms?.room_number ?? '—'}</td><td>{device.firmware_version ?? 'Not connected'}</td><td>{device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : 'Never'}</td><td><span className={`pill ${online ? 'green-pill' : 'red-pill'}`}>{online ? 'Online' : 'Offline'}</span></td></tr>; })}</tbody></table>{!devices.length && <div className="empty">No devices registered.</div>}</div></section>{open && <div className="modal-backdrop"><form className="modal" onSubmit={save}><div className="modal-head"><div><h2>Register ESP8266</h2><p className="muted">Use the generated credential in the firmware.</p></div><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18}/></button></div><div className="form-grid"><label>Device ID<input required placeholder="esp-room-101" value={form.deviceId} onChange={(e) => setForm({ ...form, deviceId: e.target.value })}/></label><label>Classroom<select required value={form.classroomId} onChange={(e) => setForm({ ...form, classroomId: e.target.value })}><option value="">Select classroom</option>{classrooms.map((room) => <option key={room.id} value={room.id}>{room.building_name} / Room {room.room_number}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button><button className="primary">Register device</button></div></form></div>}</main>;
+  return <main className="content"><div className="page-heading"><div><p className="eyebrow">HARDWARE</p><h1>ESP8266 Device Management</h1><p className="muted">Register each controller, assign its classroom, and monitor heartbeat health.</p></div><button className="primary compact" onClick={() => { setOpen(true); setCredential(''); }}><Plus size={16}/> Register Device</button></div>{error && <div className="notice error">{error}</div>}{credential && <div className="notice success"><b>Save this credential now:</b> {credential}<br/><small>It is shown only after registration. Flash it into the device firmware.</small></div>}<section className="panel"><div className="section-head"><div><h2>Registered devices</h2><p className="muted">Online means a heartbeat was received within the last 90 seconds. This page refreshes every 10 seconds.</p></div></div><div className="table-wrap"><table><thead><tr><th>Device ID</th><th>Classroom</th><th>Firmware</th><th>Last heartbeat</th><th>Status</th></tr></thead><tbody>{devices.map((device) => { const lastSeen = device.last_seen_at ? Date.parse(device.last_seen_at) : Number.NaN; const online = Number.isFinite(lastSeen) && lastSeen <= Date.now() && Date.now() - lastSeen < 90000 && !device.revoked_at; return <tr key={device.id}><td><b>{device.device_id}</b></td><td>{device.classrooms?.buildings?.name ?? '—'} / {device.classrooms?.room_number ?? '—'}</td><td>{device.firmware_version ?? 'Not connected'}</td><td>{device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : 'Never'}</td><td><span className={`pill ${online ? 'green-pill' : 'red-pill'}`}>{online ? 'Online' : 'Offline'}</span></td></tr>; })}</tbody></table>{!devices.length && <div className="empty">No devices registered.</div>}</div></section>{open && <div className="modal-backdrop"><form className="modal" onSubmit={save}><div className="modal-head"><div><h2>Register ESP8266</h2><p className="muted">Use the generated credential in the firmware.</p></div><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18}/></button></div><div className="form-grid"><label>Device ID<input required placeholder="esp-room-101" value={form.deviceId} onChange={(e) => setForm({ ...form, deviceId: e.target.value })}/></label><label>Classroom<select required value={form.classroomId} onChange={(e) => setForm({ ...form, classroomId: e.target.value })}><option value="">Select classroom</option>{classrooms.map((room) => <option key={room.id} value={room.id}>{room.building_name} / Room {room.room_number}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button><button className="primary">Register device</button></div></form></div>}</main>;
 }
 
 function TeacherManagement() {
